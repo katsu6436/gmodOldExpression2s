@@ -1,0 +1,1029 @@
+@name tetris [beta]
+#https://github.com/yingKatsu/expression2tspintetri
+#known bugs in this version: hard drop doesnt work right if you drop while the current tetrimino is under a block
+
+@persist HC Display:table BoardFinished CurrRow:array X Y Seat:entity
+@persist [TetriminoData TSpinCheckData HDData ColorData CWWallKickData CCWWallKickData SongData]:table
+@persist [CurrPiece BoardData DrawData]:table [TypeBag TypeBag2 LastDraw]:array [NextPiece HeldPiece]:string TickST Tick End AlreadyHeld StrafeTime
+@persist PlayMusic SongQueue:array NewSongTime
+@persist Combo TSpin Back2Back Score
+@persist Multiplayer GarbageQueue
+@outputs Score Combo GarbageQueue OutputStr:string CPUUsage Ops [TypeBag TypeBag2]:array
+
+CPUUsage = entity():cpuUsage()*1000000
+Ops = entity():ops()
+
+Time = systime()
+CursorClose = (owner():aimPos():distance(entity():pos())<7)
+if(changed(CursorClose)){
+    if(CursorClose){
+        entity():propNotSolid(0)
+        entity():setAlpha(255)
+    }else{
+        entity():propNotSolid(1)
+        entity():setAlpha(0)
+    }
+} 
+
+if(first()){
+    dsJoinGroup("katsuTetris")
+	   dsSetScope(10)
+            
+    Multiplayer = 0
+    PlayMusic = 1
+    
+    runOnTick(1)
+    propSpawnASync(1)
+    propSpawnUndo(0)
+    
+    X = -1
+    
+###########################
+#song data
+    SongData = table(
+        array("https://www.dropbox.com/s/isbtu3tkcpk4b8s/Korobeiniki%20Folk.mp3?dl=0",3*60+22),
+        array("https://www.dropbox.com/s/8ho2j8xvb4g8z1t/Moskau.mp3?dl=0",4*60+27),
+        array("https://www.dropbox.com/s/z23a1a9439v8ply/Rasputin.mp3?dl=0",4*60+26),
+        array("https://www.dropbox.com/s/i7h5iwftibc4uiv/Red%20Army%20Choir%20-%20Korobeiniki.mp3?dl=0",4*60+50),
+        array("https://www.dropbox.com/s/nj5agna1jbzm97t/Tetris%2099%20-%20Galaxy%2099.mp3?dl=0",4*60+23),
+        array("https://www.dropbox.com/s/7j0ggst0vnfecoa/Tetris%2099%20-%20Legend%20of%20Zelda%2099.mp3?dl=0",3*60+41),
+        array("https://www.dropbox.com/s/bfsdd07psph8u3m/Tetris%2099%20-%20Main%20Theme.mp3?dl=0",4*60+52),
+        array("https://www.dropbox.com/s/m6plglxyl6clgjm/Tetris%2099%20-%20Toy%20Blocks%2010.mp3?dl=0",2*60+26),
+        array("https://www.dropbox.com/s/q2gh1ww0r9pabr2/Tetris%2099%20-%20Toy%20Blocks%2050.mp3?dl=0",3*60+8),
+        array("https://www.dropbox.com/s/367l5f1u3m8ovy5/Tetris%20Dubstep%20Remix.mp3?dl=0",4*60+49),
+        array("https://www.dropbox.com/s/5lr3qi032t7dq0v/Tetris%20Metal%20Remix.mp3?dl=0",2*60+6),
+        array("https://www.dropbox.com/s/sbkdikveypmirx9/Tetris%20Rap.mp3?dl=0",2*60+59),
+        array("https://www.dropbox.com/s/fcln682vcoqcjz5/Tetris%20Something%20Remix.mp3?dl=0",3*60+37),
+        array("https://www.dropbox.com/s/t438troxeoydbp5/Tetris%20Techno%20Remix.mp3?dl=0",3*60+4),
+        array("https://www.dropbox.com/s/2lenfyemmub7wrw/Tetris%20Trap%20Remix.mp3?dl=0",2*60+50)        
+    )
+
+###########################
+#tetdata
+    
+    ColorData[0,vector4] = vec4(100,100,100,255)
+
+    #This data is technically upside down
+    #Its flipped the correct way immediately after
+    #It's put like this for easy visual and access though
+    
+    TetriminoData["I",table] = table(            
+        array(0,0,0,0,
+              1,1,1,1,
+              0,0,0,0,
+              0,0,0,0),
+            
+        array(0,0,1,0,
+              0,0,1,0,
+              0,0,1,0,
+              0,0,1,0),
+            
+        array(0,0,0,0,
+              0,0,0,0,
+              1,1,1,1,
+              0,0,0,0),
+            
+        array(0,1,0,0,
+              0,1,0,0,
+              0,1,0,0,
+              0,1,0,0)
+    )
+    HDData["I",table] = table(array(2,2,2,2),array(4,4,0,4),array(1,1,1,1),array(4,0,4,4))
+    ColorData[1,vector4] = vec4(0,255,255,255)
+    
+    TetriminoData["J",table] = table(            
+        array(2,0,0,0,
+              2,2,2,0,
+              0,0,0,0,
+              0,0,0,0),
+            
+        array(0,2,2,0,
+              0,2,0,0,
+              0,2,0,0,
+              0,0,0,0),
+            
+        array(0,0,0,0,
+              2,2,2,0,
+              0,0,2,0,
+              0,0,0,0),
+        
+        array(0,2,0,0,
+              0,2,0,0,
+              2,2,0,0,
+              0,0,0,0)
+    )
+    HDData["J",table] = table(array(2,2,2,4),array(4,1,3,4),array(2,2,1,4),array(1,1,4,4))
+    ColorData[2,vector4] = vec4(0,0,255,255)
+    
+    TetriminoData["L",table] = table(            
+        array(0,0,3,0,
+              3,3,3,0,
+              0,0,0,0,
+              0,0,0,0),
+            
+        array(0,3,0,0,
+              0,3,0,0,
+              0,3,3,0,
+              0,0,0,0),            
+            
+        array(0,0,0,0,
+              3,3,3,0,
+              3,0,0,0,
+              0,0,0,0),            
+        
+        array(3,3,0,0,
+              0,3,0,0,
+              0,3,0,0,
+              0,0,0,0)
+    )     
+    HDData["L",table] = table(array(2,2,2,4),array(4,1,1,4),array(1,2,2,4),array(3,1,4,4))
+    ColorData[3,vector4] = vec4(255,170,0,255)
+
+    TetriminoData["O",table] = table(
+        array(4,4,0,0,
+              4,4,0,0,
+              0,0,0,0,
+              0,0,0,0),
+            
+        array(4,4,0,0,
+              4,4,0,0,
+              0,0,0,0,
+              0,0,0,0),
+            
+        array(4,4,0,0,
+              4,4,0,0,
+              0,0,0,0,
+              0,0,0,0),
+            
+        array(4,4,0,0,
+              4,4,0,0,
+              0,0,0,0,
+              0,0,0,0)
+    )
+    HDData["O",table] = table(array(2,2,4,4),array(2,2,4,4),array(2,2,4,4),array(2,2,4,4))
+    ColorData[4,vector4] = vec4(255,255,0,255)
+       
+    TetriminoData["S",table] = table(            
+        array(0,5,5,0,
+              5,5,0,0,
+              0,0,0,0,
+              0,0,0,0),
+            
+        array(0,5,0,0,
+              0,5,5,0,
+              0,0,5,0,
+              0,0,0,0),
+            
+        array(0,0,0,0,
+              0,5,5,0,
+              5,5,0,0,
+              0,0,0,0),
+            
+        array(5,0,0,0,
+              5,5,0,0,
+              0,5,0,0,
+              0,0,0,0)
+    )
+    HDData["S",table] = table(array(2,2,3,4),array(4,2,1,4),array(1,1,2,4),array(2,1,4,4))
+    ColorData[5,vector4] = vec4(0,255,0,255)
+        
+    TetriminoData["T",table] = table(            
+        array(0,6,0,0,
+              6,6,6,0,
+              0,0,0,0,
+              0,0,0,0),
+            
+        array(0,6,0,0,
+              0,6,6,0,
+              0,6,0,0,
+              0,0,0,0),
+        
+        array(0,0,0,0,
+              6,6,6,0,
+              0,6,0,0,
+              0,0,0,0),
+            
+        array(0,6,0,0,
+              6,6,0,0,
+              0,6,0,0,
+              0,0,0,0)
+    ) 
+    HDData["T",table] = table(array(2,2,2,4),array(4,1,2,4),array(2,1,2,4),array(2,1,4,4))
+    ColorData[6,vector4] = vec4(153,0,255,255)
+    
+    TetriminoData["Z",table] = table(            
+        array(7,7,0,0,
+              0,7,7,0,
+              0,0,0,0,
+              0,0,0,0),
+            
+        array(0,0,7,0,
+              0,7,7,0,
+              0,7,0,0,
+              0,0,0,0),
+        
+        array(0,0,0,0,
+              7,7,0,0,
+              0,7,7,0,
+              0,0,0,0),
+            
+        array(0,7,0,0,
+              7,7,0,0,
+              7,0,0,0,
+              0,0,0,0)
+    )
+    HDData["Z",table] = table(array(3,2,2,4),array(4,1,2,4),array(2,1,1,4),array(1,2,4,4))
+    ColorData[7,vector4] = vec4(255,0,0,255)
+    
+############
+    
+    TSpinCheckData = table(
+        array(1,0,1,0,
+              0,0,0,0,
+              1,0,1,0,
+              0,0,0,0)
+    )
+
+############
+    CWWallKickData = table(
+        array(vec2(0,0),vec2(-1,0),vec2(-1,-1),vec2(0,2),vec2(-1,2)),  #4>>1 
+        array(vec2(0,0),vec2(-1,0),vec2(-1,1),vec2(0,-2),vec2(-1,-2)), #1>>2        
+        array(vec2(0,0),vec2(1,0),vec2(1,-1),vec2(0,2),vec2(1,2)),     #2>>3        
+        array(vec2(0,0),vec2(1,0),vec2(1,1),vec2(0,-2),vec2(1,-2))     #3>>4             
+    )
+    
+    CCWWallKickData = table( 
+        array(vec2(0,0),vec2(1,0),vec2(1,-1),vec2(0,2),vec2(1,2)),     #2>>1
+        array(vec2(0,0),vec2(-1,0),vec2(-1,1),vec2(0,-2),vec2(-1,-2)), #3>>2
+        array(vec2(0,0),vec2(-1,0),vec2(-1,-1),vec2(0,2),vec2(-1,2)),  #4>>3 
+        array(vec2(0,0),vec2(1,0),vec2(1,1),vec2(0,-2),vec2(1,-2))     #1>>4      
+    )
+    
+###########################
+#functions
+
+    function parseData(T:table){ #chew up all that visual table shit above into stuff the e2 can understand better
+        for(I=1,T:count()){
+            local A = T[I,array]
+            local Row1 = array(A[13,number],A[14,number],A[15,number],A[16,number])
+            local Row2 = array(A[9,number],A[10,number],A[11,number],A[12,number])
+            local Row3 = array(A[5,number],A[6,number],A[7,number],A[8,number])
+            local Row4 = array(A[1,number],A[2,number],A[3,number],A[4,number])
+            
+            T[I,array] = Row1:add(Row2:add(Row3:add(Row4)))
+        }
+    }
+    
+    function array get4x4BoardAtPos(A:array){ #grab a 4x4 of the board ("pos" of the 4x4 is top left corner)
+        local X = A[1,number]
+        local Y = A[2,number]
+        local Data = array()
+        
+        for(I=1,4){
+            local InvI = 5 - I
+            local RowNum = Y - (InvI - 1)
+            if(BoardData:exists(RowNum)){ 
+                local CurrRow = BoardData[RowNum,array]
+                for(I=1,4){
+                    local ColNum = X + (I - 1)
+                    if(CurrRow:exists(ColNum) & !CurrRow[ColNum,number]){
+                        Data:pushNumber(0)
+                    }else{
+                        Data:pushNumber(1)
+                    }
+                }
+            }else{
+                for(I=1,4){
+                    Data:pushNumber(1)
+                }               
+            }
+        }
+        
+        return Data
+            
+    }
+    
+    function number tSpinCheck(Pos:array){ #check if we will be tspinning in a spot
+        local Board4x4 = get4x4BoardAtPos(Pos)
+        
+        local Itr = 0
+        
+        for(I=1,16){
+            if(Board4x4[I,number] & TSpinCheckData[1,array][I,number]){
+                Itr++
+            }
+        }
+        
+        #[ retarded debug method
+        B1 = table(Board4x4)
+        B2 = TSpinCheckData:clone()
+        
+        parseData(B1)
+        parseData(B2)
+        
+        print(B1[1,array])
+        print(B2[1,array])
+        print(Itr)
+        ]#
+
+        if(Itr >= 2){
+            Seat:soundPlay("tspinclk",0.4,"buttons/button4.wav")
+        }
+        
+        if(Itr >= 3){
+            return 1
+        }
+        
+        return 0
+        
+    }
+    
+    function array calcFinalPos(Type:string,Pos:array,Rotation:number){ #predict where it will land
+        
+        local CPX = CurrPiece[2,array][1,number]
+        local CPY = CurrPiece[2,array][2,number]
+        
+        local BestDistance = 100        
+        for(J=CPX,CPX+3){
+            local Height = 0
+            
+            for(I=1,21){
+                local InvI = 22 - I
+                if(BoardData[InvI,array][J,number]){
+                    Height = InvI
+                    break
+                }
+            }
+
+            local Ind = J - CPX + 1
+            local BottomSpace = HDData[Type,table][Rotation,array][Ind,number]
+              
+            local Distance = CPY - 4 - Height + BottomSpace
+                           
+            if(Distance < BestDistance & BottomSpace != 4){
+                BestDistance = Distance
+            }
+            
+            #17 cuz 21 - 4 (height of a tetrimino 4x4)
+        }
+
+        return array(CPX,CPY - BestDistance)
+        
+    }
+    
+    function number canGo(A1:array,A2:array){ #compares two 4x4s to see if they overlap at all or nah
+        for(I=1,16){
+            if(A1[I,number] & A2[I,number]){
+                return 0
+            }
+        }
+        
+        #[ retarded debug method
+        B1 = table(A1)
+        B2 = table(A2)
+        
+        parseData(B1)
+        print(B1[1,array])
+        parseData(B2)
+        print(B2[1,array])
+        ]#
+        
+        return 1
+    }
+    
+    function updateString(){ #just update the output string
+        local TotalBag = TypeBag:add(TypeBag2)
+        OutputStr = "Held | " + HeldPiece + "\n" + "Next | " + NextPiece + ","
+        for(I=1,5){
+            OutputStr = OutputStr + TotalBag[I,string] + ","
+        }
+    }
+    
+    function draw(DrawAll){ #update da thing     
+        local DrawData = BoardData:clone()
+        local CPX = CurrPiece[2,array][1,number]
+        local CPY = CurrPiece[2,array][2,number]    
+            
+        if(CurrPiece[1,number]){ #overlay current piece data onto background board data
+
+            local TDIIndex = 0
+
+            for(I=CPY-3,CPY){ #because the origin is at the top left
+                for(J=CPX,CPX+3){
+                    TDIIndex++
+                    local State = TetriminoData[CurrPiece[3,string],table][CurrPiece[4,number],array][TDIIndex,number]
+                    if(State){
+                        DrawData[I,array][J,number] = State
+                    }
+                }
+            }
+        }
+        
+        if(DrawAll){
+            for(I=1,20){
+                for(J=1,10){
+                    holoColor(Display[I,array][J,number],ColorData[DrawData[I,array][J,number],vector4])
+                }
+            }
+        }else{
+            for(I=LastDraw[2,number] - 3,LastDraw[2,number]){ #update last chunk
+                for(J=LastDraw[1,number],LastDraw[1,number]+3){
+                    holoColor(Display[I,array][J,number],ColorData[DrawData[I,array][J,number],vector4])
+                }
+            }
+            
+            local CPYClamp = clamp(CPY,0,20)
+            for(I=CPYClamp - 3,CPYClamp){ #update new chunk
+                for(J=CPX,CPX+3){
+                    holoColor(Display[I,array][J,number],ColorData[DrawData[I,array][J,number],vector4])
+                }
+            }
+
+        }
+        
+        LastDraw = array(CPX,CPY)
+    }
+    
+    function settle(){ #all this stuff run when a block lands finally
+        
+        ############# add the active tetrimino to boarddata and delete it
+        local CPX = CurrPiece[2,array][1,number]
+        local CPY = CurrPiece[2,array][2,number]
+        local TDIIndex = 0
+
+        for(I=CPY-3,CPY){ #because the origin is at the top left
+            for(J=CPX,CPX+3){
+                TDIIndex++
+                local State = TetriminoData[CurrPiece[3,string],table][CurrPiece[4,number],array][TDIIndex,number]
+                if(State){
+                    BoardData[I,array][J,number] = State
+                }
+            }
+        }        
+        
+        CurrPiece[1,number] = 0       
+         
+        ############# line clearing
+        local Cleared = 0
+        local ClearedLines = array()
+        
+        for(I=1,21){
+            local InvI = 22 - I #store it in inverse because if you delete the ones at the bottom the indyex fucks up
+            
+            local Count = 0
+            
+            for(J=1,10){
+                if(BoardData[InvI,array][J,number]){
+                    Count++
+                }
+            }
+            
+            if(Count >= 10){
+                Cleared++
+                ClearedLines:pushNumber(InvI)
+            }
+            
+            if(Cleared >= 4){
+                break
+            }
+        }
+        
+        if(Cleared >= 1){
+            #local Str = ""  
+            for(J=1,ClearedLines:count()){
+                BoardData:remove(ClearedLines[J,number])
+                #Str = Str + ClearedLines[J,number] + ","  
+            }
+                    
+            for(J=1,Cleared){
+                BoardData:pushArray(array(0,0,0,0,0,0,0,0,0,0))
+            }
+        }
+        
+        ############# receive garbage
+        
+        if(GarbageQueue){
+            local RandArray = array(1,1,1,1,1,1,1,1,1,1)
+            RandArray[randint(1,10),number] = 0
+            
+            for(I=1,clamp(GarbageQueue,1,4)){
+                BoardData:insertArray(1,RandArray)
+                BoardData:remove(21)
+                GarbageQueue--
+            }
+        }
+        
+        ############# score & garbage
+        local GarbageOut = 0
+        
+        #combo
+        if(Cleared){
+            Combo++
+            
+            local ComboScore = clamp(Combo * 50,0,1000)
+            Score += ComboScore
+            
+            if(Combo >= 2){
+                Seat:hintDriver("Combo x" + Combo + " | +" + clamp(Combo * 50,0,1000),5)
+            }
+            
+            if(Combo >= 3){
+                Seat:soundPlay("combo",3,"ambient/explosions/explode_9.wav")
+                soundPitch("combo",209+random(-5,5))
+                if(Combo <= 4){
+                    GarbageOut += 1
+                }elseif(Combo >= 5 & Combo <= 7){
+                    GarbageOut += 2                
+                }elseif(Combo >= 8 & Combo <= 13){
+                    GarbageOut += 3                
+                }elseif(Combo >= 14){
+                    GarbageOut += 4                    
+                }
+            }                       
+        }else{
+            Combo = 0
+        }
+        
+        #back to back 1.5x multiplier
+        
+        local HardClear = (TSpin | Cleared > 4)
+        local B2BMult = 1
+        
+        if(Back2Back & HardClear){
+            Seat:hintDriver("Back to Back x1.5",5)
+            B2BMult = 1.5
+            GarbageOut += 1
+        }
+        
+        if(HardClear){
+            Back2Back = 1
+        }else{
+            Back2Back = 0
+        }
+        
+        #score from perfect clear
+        
+        local BR = 0
+        
+        for(I=1,10){
+            BR += BoardData[1,array][I,number]
+        }
+        
+        if(BR == 0){
+            Seat:hintDriver("PERFECT CLEAR",5)
+            Seat:soundPlay("perfectclear",5,"ambient/explosions/citadel_end_explosion2.wav")
+            Score += 2000*B2BMult
+            GarbageOut += 10
+        }
+            
+        #score from line clear and tspins
+        if(TSpin){
+            switch(Cleared){
+                case 1,
+                    Seat:hintDriver("T-Spin: Single",5)
+                    
+                    Score += 800*B2BMult
+                    GarbageOut += 2
+                    
+                    Seat:soundPlay("TS1",4,"ambient/explosions/explode_1.wav")
+                    soundPitch("TS1",209)
+                break
+                
+                case 2,
+                    Seat:hintDriver("T-Spin: Double",5)
+                    
+                    Score += 1200*B2BMult 
+                    GarbageOut += 4
+                                         
+                    Seat:soundPlay("TS2",4,"ambient/explosions/explode_2.wav")
+                    soundPitch("TS2",209)       
+                break
+                
+                case 3,
+                    Seat:hintDriver("T-Spin: Triple",5)
+                    
+                    Score += 1600*B2BMult
+                    GarbageOut += 6
+                                        
+                    Seat:soundPlay("TS3",4,"ambient/explosions/citadel_end_explosion2.wav ")
+                    soundPitch("TS3",209)                      
+                break
+            }
+        }else{
+            switch(Cleared){
+                case 1,
+                    Score += 100                             
+                break
+                
+                case 2, 
+                    Score += 300   
+                    GarbageOut += 1                      
+                break
+                
+                case 3, 
+                    Score += 500  
+                    GarbageOut += 2          
+                break
+                
+                case 4,
+                    Score += 800*B2BMult
+                    GarbageOut += 4
+                    
+                    Seat:hintDriver("|Tetris|",5)
+                    Seat:soundPlay("tetris",4,"ambient/explosions/explode_8.wav")
+                    soundPitch("tetris",209)
+                break
+            }            
+        }
+        
+        
+        TSpin = 0
+        AlreadyHeld = 0
+                
+        local NetGarbage = clamp(GarbageOut - GarbageQueue,0,21)
+                
+        GarbageQueue = clamp(GarbageQueue - GarbageOut,0,21)
+        
+        if(Multiplayer & NetGarbage){
+            dsSend("incomingGarbage","katsuTetris",NetGarbage)
+        }
+        
+        draw(1)
+        updateString()
+        
+
+    }
+        
+    function newRandomBag(){ #modern tetris tetrimino randomization
+        local Bag = array("I","J","L","O","S","T","Z")
+        local BC = Bag:count()
+        for(I=1,BC){
+            local RandIndex = randint(1,BC)
+            
+            local Temp = Bag[I,string]
+            Bag[I,string] = Bag[RandIndex,string]
+            Bag[RandIndex,string] = Temp
+        }
+        TypeBag = TypeBag2
+        TypeBag2 = Bag
+    }
+    
+    function newRandomSongQueue(){ #randomize songs
+        SongQueue = array()
+        
+        local SC = SongData:count()
+                
+        for(I=1,SongData:count()){
+            SongQueue:pushNumber(I)
+        }
+        
+        for(I=1,SC){
+            local RandIndex = randint(1,SC)
+            
+            local Temp = SongQueue[I,number]
+            SongQueue[I,number] =SongQueue[RandIndex,number]
+            SongQueue[RandIndex,number] = Temp
+        }
+    }
+
+    function void newSong(){
+        if(!SongQueue:exists(1)){
+            newRandomSongQueue()
+        }
+        
+        local NewRandSongIndex = SongQueue[1,number]
+        SongQueue:remove(1)       
+        
+        local SongString = SongData[NewRandSongIndex,array][1,string]:replace("www.dropbox.com","dl.dropboxusercontent.com"):replace("?dl=0","?dl=1")
+        
+        print(SongString)
+        Seat:streamStart(1,SongString)
+        
+        NewSongTime = Time + SongData[NewRandSongIndex,array][2,number]
+    }    
+    
+    function void resetBoard(){ #clear game
+        for(I=1,21){
+            BoardData[I,array] = array(0,0,0,0,0,0,0,0,0,0)
+        }
+        
+        CurrPiece = table(0)    
+            
+        Score = 0
+        GarbageQueue = 0
+        Combo = 0
+        Back2Back = 0
+        AlreadyHeld = 0
+                
+        End = 0
+        
+        HeldPiece = ""
+    
+        newRandomBag()
+        NextPiece = TypeBag[1,string]
+        TypeBag:remove(1)
+        
+        draw(1)
+    }
+###########################
+#init
+    parseData(TetriminoData["I",table])
+    parseData(TetriminoData["J",table])
+    parseData(TetriminoData["L",table])
+    parseData(TetriminoData["O",table])
+    parseData(TetriminoData["S",table])
+    parseData(TetriminoData["T",table])    
+    parseData(TetriminoData["Z",table])
+    
+    parseData(TSpinCheckData)
+
+    resetBoard()
+
+    newRandomSongQueue()
+}
+
+#board setup
+if(!BoardFinished){
+    if(!Seat & propCanCreate()){
+        Seat = seatSpawn("models/nova/airboat_seat.mdl",entity():toWorld(vec(50,-150,30)),entity():toWorld(ang(0,0,0)),1)
+        Seat:setMass(999999)
+        Seat:parentTo(entity())
+    }elseif(Y < 20){
+        if(holoCanCreate()){
+            X++
+            
+            if(X >= 10){
+                X = 0
+                Y++
+                
+                Display:pushArray(CurrRow)
+                CurrRow = array()        
+            }
+            
+            if(Y<20){
+                HC++
+                local NewPixel = holoCreate(HC) 
+                holoModel(HC,"models/holograms/rcube.mdl")
+                holoPos(HC,entity():toWorld(vec(X*11.5,15,Y*11.5+5)))
+                holoAng(HC,entity():toWorld(ang(0,0,0)))
+                holoColor(HC,vec(0,0,0))
+                #holoAlpha(HC,0)
+                holoParent(HC,entity())
+                #holoDisableShading(HC,1)
+                CurrRow:pushNumber(HC)
+            }
+        }
+    }else{
+        BoardFinished = 1
+    }
+}else{ #game loop
+
+    
+    ############ controls    
+    User = Seat:driver()
+    Active = User:isPlayer()
+    
+    LKey = User:keyPressed("LEFT")
+    RKey = User:keyPressed("RIGHT")
+    SoftDropKey = User:keyPressed("DOWN")
+    
+    HardDropKey = User:keyJump()
+        
+    ClockwiseKey = User:keyPressed("N") | User:keyPressed("UP")
+    CClockwiseKey = User:keyPressed("B")
+    
+    HoldKey = User:keyPressed("M")
+
+    
+    ############ start/end game
+    
+    if(changed(Active)){
+        if(Active){
+            Seat:propNotSolid(1)
+            
+            Seat:printDriver("B,N,Up - Rotate")
+            Seat:printDriver("Down - Soft Drop")
+            Seat:printDriver("Left, Right - Move")
+
+            resetBoard()
+            
+            if(PlayMusic){
+                newSong()
+            }
+        }else{
+            Seat:propNotSolid(0)
+            
+            streamStop(1)
+        }
+    }
+    
+    ############# play new song at end
+    
+    if(PlayMusic & Active & Time >= NewSongTime){
+        newSong()
+    }
+    
+    ############# receive garbage
+    
+    if(Multiplayer & dsClk("incomingGarbage")){
+        local GarbageIn = dsGetNumber()
+        GarbageQueue += GarbageIn
+        Seat:printDriver("received " + GarbageIn + " lines of garbage")
+    }
+     
+    ############# move pieces asynchronous
+    
+    if(changed(LKey) | changed(RKey)){
+        StrafeTime = Time
+    }
+    
+    local RepeatMove = (LKey | RKey) & ((Time - StrafeTime) > 0.1)
+    
+    if(RepeatMove){
+        timer("move",50)
+    }
+    
+    local Repeat = (RepeatMove & perf(80) & clk("move"))
+    
+    if((changed(LKey) & LKey) | (LKey & Repeat)){
+        local Type = CurrPiece[3,string]
+        local Rotation = CurrPiece[4,number]
+        local Pos = CurrPiece[2,array]
+        local NewPos = array(Pos[1,number] - 1,Pos[2,number])
+                
+        if(canGo(get4x4BoardAtPos(NewPos),TetriminoData[Type,table][Rotation,array])){
+            CurrPiece[2,array] = NewPos
+            draw(0)
+        }
+    }    
+    
+    if((changed(RKey) & RKey) | (RKey & Repeat)){
+        local Type = CurrPiece[3,string]
+        local Rotation = CurrPiece[4,number]
+        local Pos = CurrPiece[2,array]
+        local NewPos = array(Pos[1,number] + 1,Pos[2,number])
+                
+        if(canGo(get4x4BoardAtPos(NewPos),TetriminoData[Type,table][Rotation,array])){
+            CurrPiece[2,array] = NewPos
+            draw(0)
+        }
+    }   
+    
+    #rotations
+    
+    if(changed(ClockwiseKey)& ClockwiseKey & perf(60)){
+        local Type = CurrPiece[3,string]
+        local Pos = CurrPiece[2,array]
+        
+        local NewRotation = CurrPiece[4,number] + 1
+        if(NewRotation >= 5){
+            NewRotation = 1
+        }
+        
+        local WallKickData = CWWallKickData[NewRotation,array]
+        
+        for(Test=1,5){
+            local XOffset = WallKickData[Test,vector2]:x()
+            local YOffset = WallKickData[Test,vector2]:y()
+            local NewPos = array(Pos[1,number] + XOffset,Pos[2,number] + YOffset)  
+            
+            if(canGo(get4x4BoardAtPos(NewPos),TetriminoData[Type,table][NewRotation,array])){
+
+                #[
+                if(Test > 1){
+                    print("Special Rotation: Test " + Test + " | " + WallKickData[Test,vector2]:toString())
+                }
+                ]#
+                
+                CurrPiece[2,array] = NewPos
+                CurrPiece[4,number] = NewRotation
+                draw(0)
+                
+                if(Type == "T" & tSpinCheck(NewPos)){
+                    TSpin = 1
+                }
+                
+                break
+            }
+        }
+    }
+    
+    if(changed(CClockwiseKey)& CClockwiseKey & perf(60)){
+        local Type = CurrPiece[3,string]
+        local Pos = CurrPiece[2,array]
+        
+        local NewRotation = CurrPiece[4,number] - 1
+        if(NewRotation <= 0){
+            NewRotation = 4
+        }
+        
+        local WallKickData = CCWWallKickData[NewRotation,array]
+        
+        for(Test=1,5){
+            local XOffset = WallKickData[Test,vector2]:x()
+            local YOffset = WallKickData[Test,vector2]:y()
+            local NewPos = array(Pos[1,number] + XOffset,Pos[2,number] + YOffset)  
+            
+            if(canGo(get4x4BoardAtPos(NewPos),TetriminoData[Type,table][NewRotation,array])){
+
+                #[
+                if(Test > 1){
+                    print("Special Rotation: Test " + Test + " | " + WallKickData[Test,vector2]:toString())
+                }
+                ]#
+                
+                CurrPiece[2,array] = NewPos
+                CurrPiece[4,number] = NewRotation
+                draw(0)
+                
+                if(Type == "T" & tSpinCheck(NewPos)){
+                    TSpin = 1
+                }
+                
+                break
+            }
+        }
+    }    
+    
+    #hard drop
+    
+    if(changed(HardDropKey) & HardDropKey & CurrPiece[1,number] & maxquota() > 4000){
+        local Type = CurrPiece[3,string]
+        local Rotation = CurrPiece[4,number]
+        local Pos = CurrPiece[2,array]
+        
+        CurrPiece[2,array] = calcFinalPos(Type,Pos,Rotation)
+        
+        settle()
+    }
+    
+    #hold piece
+    
+    if(changed(HoldKey) & HoldKey & !AlreadyHeld){
+        if(HeldPiece){
+            local Temp = HeldPiece
+            HeldPiece = CurrPiece[3,string]
+            TypeBag:insertString(1,NextPiece)
+            NextPiece = Temp
+        }else{
+            HeldPiece = CurrPiece[3,string]
+        }
+        
+        CurrPiece[1,number] = 0
+        AlreadyHeld = 1
+    }
+    
+    ############ game tickrate
+    if(Active & perf(60) & !End & !User:isTyping()){
+        if((Time - TickST) >= 0.75 | (changed(SoftDropKey) & SoftDropKey)){
+            Tick++
+            TickST = Time - SoftDropKey*0.68
+        }
+    }
+    
+    if(changed(Tick)){
+        #if no active piece, check if a piece can even be spawned
+        if(!CurrPiece[1,number]){
+            local Type = NextPiece
+            if(TypeBag:count() <= 0){
+                newRandomBag()
+            }
+            NextPiece = TypeBag[1,string]
+            TypeBag:remove(1)
+            updateString()
+            
+            local Rotation = 1
+            local Pos = array(4,21)
+            
+            if(canGo(get4x4BoardAtPos(Pos),TetriminoData[Type,table][Rotation,array])){
+                CurrPiece = table(1,Pos,Type,Rotation) #active,position,type,rotational state
+            }else{
+                End = 1
+                streamStop(1)
+                
+                Seat:hintDriver("game over",5)
+                Seat:soundPlay("gameover",4,"wowozela/samples/horn/rhinoceros.wav")
+            }
+        }else{        
+            #calculate what would happen if piece went down from here
+            local Type = CurrPiece[3,string]
+            local Rotation = CurrPiece[4,number]
+            local Pos = CurrPiece[2,array]
+            local NewPos = array(Pos[1,number],Pos[2,number] - 1)
+                    
+            if(canGo(get4x4BoardAtPos(NewPos),TetriminoData[Type,table][Rotation,array])){
+                CurrPiece[2,array] = NewPos
+            }else{
+                if(!SoftDropKey){
+                    settle()
+                }
+            }
+        }
+        
+        draw(0)
+    }    
+}
+
+#by katsu
+#june 12,2021
+
