@@ -1,5 +1,5 @@
 @name tetris [beta]
-#https://github.com/yingKatsu/expression2tspintetri
+#https://github.com/yingKatsu/expression2tspintetris
 #known bugs in this version: hard drop doesnt work right if you drop while the current tetrimino is under a block
 
 @persist HC Display:table BoardFinished CurrRow:array X Y Seat:entity
