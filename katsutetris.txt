@@ -13,18 +13,6 @@
 CPUUsage = entity():cpuUsage()*1000000
 Ops = entity():ops()
 
-Time = systime()
-CursorClose = (owner():aimPos():distance(entity():pos())<7)
-if(changed(CursorClose)){
-    if(CursorClose){
-        entity():propNotSolid(0)
-        entity():setAlpha(255)
-    }else{
-        entity():propNotSolid(1)
-        entity():setAlpha(0)
-    }
-} 
-
 if(first()){
     dsJoinGroup("katsuTetris")
 	   dsSetScope(10)
